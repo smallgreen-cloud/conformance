@@ -13,7 +13,12 @@ from sg_common import Report, load_wrangler, load_yaml
 ENV_RE = re.compile(r"\benv\.([A-Z][A-Z0-9_]*)\b")
 PROCESS_ENV_RE = re.compile(r"\bprocess\.env\.([A-Z][A-Z0-9_]*)\b")
 CODE_GLOBS = ["*.js", "*.mjs", "*.ts", "*.jsx", "*.tsx"]
-SKIP_DIRS = {"node_modules", ".git", ".wrangler", "dist", "build", ".conformance", ".spec"}
+# CON-3 範圍＝runtime 程式碼：排除測試、build 工具腳本、生成的型別宣告檔
+SKIP_DIRS = {"node_modules", ".git", ".wrangler", "dist", "build", ".conformance", ".spec",
+             "tests", "test", "__tests__", "scripts"}
+SKIP_SUFFIXES = (".d.ts",)
+# 平台標準環境變數，非 secret 亦非 binding
+BUILTIN_VARS = {"NODE_ENV", "CI", "CF_PAGES", "GITHUB_ACTIONS", "DEV", "PROD"}
 
 
 def declared_names(repo: Path) -> set:
@@ -47,7 +52,7 @@ def referenced_names(repo: Path) -> dict:
     refs = {}
     for glob in CODE_GLOBS:
         for f in repo.rglob(glob):
-            if any(part in SKIP_DIRS for part in f.parts):
+            if any(part in SKIP_DIRS for part in f.parts) or f.name.endswith(SKIP_SUFFIXES):
                 continue
             try:
                 text = f.read_text(encoding="utf-8", errors="ignore")
@@ -67,7 +72,8 @@ def main() -> int:
     rep = Report("secrets manifest 一致性 (CON-3)")
     declared = declared_names(args.repo)
     refs = referenced_names(args.repo)
-    undeclared = {name: files for name, files in sorted(refs.items()) if name not in declared}
+    undeclared = {name: files for name, files in sorted(refs.items())
+                  if name not in declared and name not in BUILTIN_VARS}
     if undeclared:
         rep.add("CON-3", False, [f"env.{name} 未宣告（{', '.join(sorted(files)[:3])}）" for name, files in undeclared.items()])
     else:

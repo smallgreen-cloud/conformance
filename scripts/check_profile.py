@@ -12,13 +12,30 @@ from pathlib import Path
 from sg_common import Report, die, load_wrangler, load_yaml
 
 FORBIDDEN_FILES = ["Dockerfile", "docker-compose.yml", "docker-compose.yaml", "Procfile"]
-EXCLUDED_TOPLEVEL = {
+# wrangler 的「資源型」top-level key 全集（白名單語意：出現在此集合但不在 spec 允許清單 → fail）。
+# 非資源 key（name/main/compatibility_date/vars/observability…）不在此集合，不受 SAP-2 管。
+WRANGLER_RESOURCE_KEYS = {
+    "d1_databases", "kv_namespaces", "r2_buckets", "ai", "assets",
+    "queues", "durable_objects", "hyperdrive", "vectorize", "browser",
+    "analytics_engine_datasets", "send_email", "services", "workflows",
+    "pipelines", "dispatch_namespaces", "mtls_certificates", "tail_consumers",
+    "queues_consumers", "version_metadata", "unsafe",
+}
+EXCLUDED_KEY_TO_NAME = {
     "queues": "queues",
     "durable_objects": "durable_objects",
     "hyperdrive": "hyperdrive",
     "vectorize": "vectorize",
     "browser": "browser_rendering",
 }
+
+
+def allowed_wrangler_keys(allowlist: dict) -> set:
+    keys = set()
+    for entry in (allowlist.get("allowed") or {}).values():
+        for k in entry.get("wrangler_keys") or []:
+            keys.add(k.split(".")[0].split("[")[0])
+    return keys
 
 
 def declared_profile(repo: Path) -> str:
@@ -43,8 +60,16 @@ def check_small_app(rep: Report, repo: Path, allowlist: dict):
         return
     rep.add("SAP-1", True)
 
-    hits = [f"{key}（{name}：{allowlist['excluded'][name].get('reason', '')}）"
-            for key, name in EXCLUDED_TOPLEVEL.items() if key in wcfg]
+    allowed = allowed_wrangler_keys(allowlist)
+    hits = []
+    for key in sorted(WRANGLER_RESOURCE_KEYS):
+        if key not in wcfg or key in allowed:
+            continue
+        name = EXCLUDED_KEY_TO_NAME.get(key)
+        if name and name in (allowlist.get("excluded") or {}):
+            hits.append(f"{key}（{allowlist['excluded'][name].get('reason', '')}）")
+        else:
+            hits.append(f"{key}（不在 v0.1 允許清單——未評估資源，請開 spec issue 附免費層額度證據）")
     # DO 的 SQLite migration 形式
     for mig in wcfg.get("migrations", []) or []:
         if isinstance(mig, dict) and mig.get("new_sqlite_classes"):

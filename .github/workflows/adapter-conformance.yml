@@ -1,0 +1,100 @@
+name: SmallGreen Adapter Conformance
+
+# Path C（適配 repo）用的 reusable workflow：
+# 依 profile.yaml 的 upstream 鎖定 commit 取回上游 → 疊上契約檔與 patches → 對組裝樹跑 conformance。
+# 徽章掛適配 repo（registry），不掛上游。
+
+on:
+  workflow_call:
+    inputs:
+      spec_ref:
+        type: string
+        default: v0.1.0
+      conformance_ref:
+        type: string
+        default: main
+      run_smoke:
+        description: "上游多半需 build 才能 dev，預設不跑 smoke（部署期由裁判層驗）"
+        type: boolean
+        default: false
+
+env:
+  GITLEAKS_VERSION: "8.30.1"
+
+jobs:
+  adapter-conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout 適配 repo
+        uses: actions/checkout@v4
+        with:
+          path: adapter
+
+      - name: Secrets 掃描（適配 repo 本體）
+        run: |
+          curl -sL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar -xz gitleaks
+          ./gitleaks dir adapter --no-banner --redact
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install --quiet jsonschema pyyaml
+
+      - name: 解析 upstream 鎖定
+        id: upstream
+        run: |
+          python - <<'EOF' >> "$GITHUB_OUTPUT"
+          import yaml
+          up = (yaml.safe_load(open("adapter/.smallgreen/profile.yaml")) or {}).get("upstream") or {}
+          assert up.get("repo") and up.get("commit"), "profile.yaml 缺 upstream.repo/commit（Path C 必填）"
+          print(f"repo={up['repo']}")
+          print(f"commit={up['commit']}")
+          EOF
+
+      - name: Checkout 上游（鎖定 commit）
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.upstream.outputs.repo }}
+          ref: ${{ steps.upstream.outputs.commit }}
+          path: assembled
+
+      - name: 疊上契約檔與 patches
+        run: |
+          cp -R adapter/.smallgreen assembled/
+          cp adapter/UPSTREAM.md assembled/
+          if compgen -G "adapter/patches/*.patch" > /dev/null; then
+            cd assembled && for p in ../adapter/patches/*.patch; do git apply "$p"; done
+          fi
+
+      - name: Checkout conformance 腳本
+        uses: actions/checkout@v4
+        with:
+          repository: smallgreen-cloud/conformance
+          ref: ${{ inputs.conformance_ref }}
+          path: .conformance
+
+      - name: Checkout spec
+        uses: actions/checkout@v4
+        with:
+          repository: smallgreen-cloud/spec
+          ref: ${{ inputs.spec_ref }}
+          path: .spec
+
+      - name: 契約 schema（CON-1/2/4/5/6，含 UPSTREAM.md 一致性）
+        run: python .conformance/scripts/check_contract.py --spec .spec --repo assembled
+
+      - name: Profile 靜態判定
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python .conformance/scripts/check_profile.py --spec .spec --repo assembled
+
+      - name: Secrets manifest 一致性（CON-3）
+        run: python .conformance/scripts/check_secrets_manifest.py --repo assembled
+
+      - name: Migration 重放＋smoke（預設跳過 smoke）
+        run: |
+          if ${{ inputs.run_smoke }}; then
+            python .conformance/scripts/smoke_and_migrations.py --repo assembled
+          else
+            echo "run_smoke=false：Path C smoke 由部署期裁判層執行"
+          fi
