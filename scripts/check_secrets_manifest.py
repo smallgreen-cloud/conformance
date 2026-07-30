@@ -39,6 +39,11 @@ def declared_names(repo: Path) -> set:
         for item in wcfg.get("send_email") or []:
             if isinstance(item, dict) and item.get("name"):
                 names.add(item["name"])
+        for item in (wcfg.get("durable_objects") or {}).get("bindings") or []:
+            if isinstance(item, dict) and item.get("name"):
+                names.add(item["name"])
+        for item in wcfg.get("queues_consumers") or []:
+            pass  # consumers 無 binding 名
     prof = repo / ".smallgreen" / "profile.yaml"
     if prof.exists():
         try:
