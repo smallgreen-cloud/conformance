@@ -1,0 +1,8 @@
+{
+  // 違規 fixture：queues 與 durable_objects 不在 v0.1 允許清單（SAP-2 必 fail）
+  "name": "fixture-fail",
+  "main": "src/index.js",
+  "compatibility_date": "2026-04-01",
+  "queues": { "producers": [{ "binding": "Q", "queue": "jobs" }] },
+  "durable_objects": { "bindings": [{ "name": "ROOM", "class_name": "Room" }] }
+}

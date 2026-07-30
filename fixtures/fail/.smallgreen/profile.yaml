@@ -1,0 +1,15 @@
+# CON-2 必 fail：夾帶資源宣告欄位；CON-1 必 fail：缺 acceptance.yaml 與 maintenance.yaml
+schema_version: "0.1.0"
+profile: small-app
+summary:
+  purpose: 違規測試 fixture
+  audience: conformance CI
+  users_estimate: "1"
+data:
+  types: [test]
+  stored_in: [d1]
+secrets: []
+external_services: []
+d1_databases:
+  - binding: DB
+    database_name: should_not_be_here

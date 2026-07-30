@@ -1,0 +1,51 @@
+name: self-test
+
+# conformance 自測：pass fixture 必須全綠、fail fixture 必須非零退出（truth table 對跑）。
+# 腳本改壞任一預期即紅燈。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  fixtures:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout spec
+        uses: actions/checkout@v4
+        with:
+          repository: smallgreen-cloud/spec
+          ref: v0.1.0
+          path: .spec
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - run: pip install --quiet jsonschema pyyaml
+
+      - name: pass fixture 必須全綠
+        run: |
+          python scripts/check_contract.py --spec .spec --repo fixtures/pass
+          python scripts/check_profile.py --spec .spec --repo fixtures/pass
+          python scripts/check_secrets_manifest.py --repo fixtures/pass
+          python scripts/smoke_and_migrations.py --repo fixtures/pass --skip-smoke
+
+      - name: fail fixture 必須被拒（每支腳本各自非零退出）
+        run: |
+          set +e
+          fails=0
+          python scripts/check_contract.py --spec .spec --repo fixtures/fail && { echo "check_contract 未擋下 fail fixture"; fails=1; }
+          python scripts/check_profile.py --spec .spec --repo fixtures/fail && { echo "check_profile 未擋下 fail fixture"; fails=1; }
+          python scripts/check_secrets_manifest.py --repo fixtures/fail && { echo "check_secrets_manifest 未擋下 fail fixture"; fails=1; }
+          exit $fails
+
+      - name: pass fixture smoke 實跑（wrangler dev）
+        run: python scripts/smoke_and_migrations.py --repo fixtures/pass --port 8790

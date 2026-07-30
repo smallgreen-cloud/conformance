@@ -1,0 +1,16 @@
+schema_version: "0.1.0"
+health:
+  path: /healthz
+  expect_status: 200
+smoke:
+  - name: 首頁回應
+    steps:
+      - action: http_request
+        params: { method: GET, path: / }
+    expect: { status: 200, body_contains: fixture }
+    idempotency: true
+user_acceptance:
+  - task: 開啟首頁
+    success_looks_like: 顯示 fixture 字樣
+uninstall_check:
+  resource_zero_diff: true

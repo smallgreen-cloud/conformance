@@ -1,0 +1,82 @@
+name: SmallGreen Conformance
+
+# Reusable workflow：受檢 repo 以 workflow_call 引用。
+# 五支檢查對應 spec test_matrix 的「conformance CI」落點：
+#   契約 schema（CON-1/2/4/5/6）／profile 靜態判定（SAP-1/2/4/6、PIP-1/3/8）／
+#   secrets manifest 一致性（CON-3）／secrets 掃描（CON-7/SAP-3）／migration 空庫重放＋smoke
+# 注意：secrets 掃描必須在 checkout 輔助 repo 之前執行，
+# 否則 .conformance/fixtures 內的測試用假 secret 會污染受檢結果。
+
+on:
+  workflow_call:
+    inputs:
+      spec_ref:
+        description: "smallgreen-cloud/spec 的 ref（tag/branch）"
+        type: string
+        default: v0.1.0
+      conformance_ref:
+        description: "conformance 腳本 ref"
+        type: string
+        default: main
+      run_smoke:
+        description: "是否啟動 wrangler dev 跑本地 smoke"
+        type: boolean
+        default: true
+
+env:
+  GITLEAKS_VERSION: "8.30.1"
+
+jobs:
+  conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout 受檢 repo
+        uses: actions/checkout@v4
+
+      - name: Secrets 掃描（CON-7／SAP-3）— gitleaks
+        run: |
+          curl -sL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar -xz gitleaks
+          ./gitleaks dir . --no-banner --redact \
+            $( [ -f .gitleaks.toml ] && echo "--config .gitleaks.toml" )
+          rm -f gitleaks
+
+      - name: Checkout conformance 腳本
+        uses: actions/checkout@v4
+        with:
+          repository: smallgreen-cloud/conformance
+          ref: ${{ inputs.conformance_ref }}
+          path: .conformance
+
+      - name: Checkout spec（schema＋允許清單）
+        uses: actions/checkout@v4
+        with:
+          repository: smallgreen-cloud/spec
+          ref: ${{ inputs.spec_ref }}
+          path: .spec
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: 安裝 Python 依賴
+        run: pip install --quiet jsonschema pyyaml
+
+      - name: 契約 schema（CON-1/2/4/5/6）
+        run: python .conformance/scripts/check_contract.py --spec .spec --repo .
+
+      - name: Profile 靜態判定（SAP-1/2/4/6、PIP-1/3/8）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python .conformance/scripts/check_profile.py --spec .spec --repo .
+
+      - name: Secrets manifest 一致性（CON-3）
+        run: python .conformance/scripts/check_secrets_manifest.py --repo .
+
+      - name: Migration 空庫重放＋smoke
+        run: |
+          python .conformance/scripts/smoke_and_migrations.py --repo . \
+            ${{ inputs.run_smoke == false && '--skip-smoke' || '' }}
