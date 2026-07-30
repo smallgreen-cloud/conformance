@@ -23,8 +23,10 @@ BUILTIN_VARS = {"NODE_ENV", "CI", "CF_PAGES", "GITHUB_ACTIONS", "DEV", "PROD"}
 
 def declared_names(repo: Path) -> set:
     names = set()
-    wpath, wcfg = load_wrangler(repo)
-    if wcfg:
+    for cfg_path in find_all_wrangler(repo):
+        wcfg = parse_wrangler_file(cfg_path)
+        if not wcfg:
+            continue
         names.update((wcfg.get("vars") or {}).keys())
         for key in ("d1_databases", "kv_namespaces", "r2_buckets", "services", "analytics_engine_datasets"):
             for item in wcfg.get(key) or []:

@@ -85,6 +85,30 @@ def find_wrangler(repo: Path):
     return None
 
 
+def find_all_wrangler(repo: Path, max_depth: int = 3):
+    """回傳 repo 內所有 wrangler 設定檔路徑（多 worker monorepo 支援），排除依賴目錄。"""
+    skip = {"node_modules", ".git", ".wrangler", "dist", "build", ".output", ".vercel"}
+    found = []
+    for name in WRANGLER_NAMES:
+        for p in repo.rglob(name):
+            rel = p.relative_to(repo)
+            if len(rel.parts) > max_depth or any(part in skip for part in rel.parts):
+                continue
+            found.append(p)
+    return sorted(found)
+
+
+def parse_wrangler_file(p: Path):
+    try:
+        if p.suffix == ".toml":
+            import tomllib
+
+            return tomllib.loads(p.read_text(encoding="utf-8"))
+        return json.loads(strip_jsonc(p.read_text(encoding="utf-8")))
+    except Exception:
+        return None
+
+
 def load_wrangler(repo: Path):
     """回傳 (path, dict)；找不到或解析失敗回 (path_or_None, None)。"""
     p = find_wrangler(repo)

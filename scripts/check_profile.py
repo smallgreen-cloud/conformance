@@ -9,7 +9,7 @@ import os
 import sys
 from pathlib import Path
 
-from sg_common import Report, die, load_wrangler, load_yaml
+from sg_common import Report, die, find_all_wrangler, load_wrangler, load_yaml, parse_wrangler_file
 
 FORBIDDEN_FILES = ["Dockerfile", "docker-compose.yml", "docker-compose.yaml", "Procfile"]
 # wrangler 的「資源型」top-level key 全集（白名單語意：出現在此集合但不在 spec 允許清單 → fail）。
@@ -48,6 +48,31 @@ def declared_profile(repo: Path) -> str:
     return "small-app"
 
 
+def resource_hits(wcfg: dict, allowlist: dict, prefix: str = "") -> list:
+    allowed = allowed_wrangler_keys(allowlist)
+    hits = []
+    for key in sorted(WRANGLER_RESOURCE_KEYS):
+        if key not in wcfg or key in allowed:
+            continue
+        name = EXCLUDED_KEY_TO_NAME.get(key)
+        if name and name in (allowlist.get("excluded") or {}):
+            hits.append(f"{prefix}{key}（{allowlist['excluded'][name].get('reason', '')}）")
+        else:
+            hits.append(f"{prefix}{key}（不在 v0.1 允許清單——未評估資源，請開 spec issue 附免費層額度證據）")
+    # DO 條件式：免費層限 SQLite-backed；new_classes（KV-backed）＝付費限定
+    for mig in wcfg.get("migrations", []) or []:
+        if isinstance(mig, dict) and mig.get("new_classes"):
+            hits.append(f"{prefix}migrations[].new_classes（KV-backed durable_objects 為付費限定；免費層限 new_sqlite_classes）")
+    if "durable_objects" in wcfg and "durable_objects" in allowed:
+        migs = wcfg.get("migrations", []) or []
+        has_sqlite = any(isinstance(m, dict) and m.get("new_sqlite_classes") for m in migs)
+        if not migs:
+            hits.append(f"{prefix}durable_objects 宣告但無 migrations——無法確認 SQLite-backed（免費層條件）")
+        elif not has_sqlite:
+            hits.append(f"{prefix}durable_objects 宣告但 migrations 無 new_sqlite_classes——免費層限 SQLite-backed")
+    return hits
+
+
 def check_small_app(rep: Report, repo: Path, allowlist: dict):
     wpath, wcfg = load_wrangler(repo)
     if wpath is None:
@@ -60,20 +85,14 @@ def check_small_app(rep: Report, repo: Path, allowlist: dict):
         return
     rep.add("SAP-1", True)
 
-    allowed = allowed_wrangler_keys(allowlist)
+    # 多 worker monorepo：所有 wrangler 設定檔（root＋子目錄）都受 SAP-2 判定
     hits = []
-    for key in sorted(WRANGLER_RESOURCE_KEYS):
-        if key not in wcfg or key in allowed:
+    for cfg_path in find_all_wrangler(repo):
+        cfg = parse_wrangler_file(cfg_path)
+        if cfg is None:
+            hits.append(f"{cfg_path.relative_to(repo)} 解析失敗")
             continue
-        name = EXCLUDED_KEY_TO_NAME.get(key)
-        if name and name in (allowlist.get("excluded") or {}):
-            hits.append(f"{key}（{allowlist['excluded'][name].get('reason', '')}）")
-        else:
-            hits.append(f"{key}（不在 v0.1 允許清單——未評估資源，請開 spec issue 附免費層額度證據）")
-    # DO 的 SQLite migration 形式
-    for mig in wcfg.get("migrations", []) or []:
-        if isinstance(mig, dict) and mig.get("new_sqlite_classes"):
-            hits.append("migrations[].new_sqlite_classes（durable_objects：v0.1 排除）")
+        hits.extend(resource_hits(cfg, allowlist, prefix=f"{cfg_path.relative_to(repo)}: "))
     rep.add("SAP-2", not hits, hits or None)
 
 

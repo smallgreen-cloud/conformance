@@ -1,8 +1,9 @@
 {
-  // 違規 fixture：queues 與 durable_objects 不在 v0.1 允許清單（SAP-2 必 fail）
+  // 違規 fixture（SAP-2 必 fail）：queues 需付費；DO 用 new_classes（KV-backed）為付費限定
   "name": "fixture-fail",
   "main": "src/index.js",
   "compatibility_date": "2026-04-01",
   "queues": { "producers": [{ "binding": "Q", "queue": "jobs" }] },
-  "durable_objects": { "bindings": [{ "name": "ROOM", "class_name": "Room" }] }
+  "durable_objects": { "bindings": [{ "name": "ROOM", "class_name": "Room" }] },
+  "migrations": [{ "tag": "v1", "new_classes": ["Room"] }]
 }
