@@ -74,24 +74,23 @@ def resource_hits(wcfg: dict, allowlist: dict, prefix: str = "") -> list:
 
 
 def check_small_app(rep: Report, repo: Path, allowlist: dict):
-    wpath, wcfg = load_wrangler(repo)
-    if wpath is None:
-        rep.add("SAP-1", False, "找不到 wrangler.jsonc / wrangler.toml / wrangler.json")
-        rep.add("SAP-2", False, skipped=False, reasons="因 SAP-1 失敗無法判定")
-        return
-    if wcfg is None:
-        rep.add("SAP-1", False, f"{wpath.name} 解析失敗")
+    # SAP-1（v0.1.3）：根目錄或子目錄（深度 ≤3）存在至少一個可解析的 wrangler 設定
+    configs = find_all_wrangler(repo)
+    if not configs:
+        rep.add("SAP-1", False, "找不到任何 wrangler.jsonc / wrangler.toml / wrangler.json（根目錄與深度 3 內子目錄）")
         rep.add("SAP-2", False, reasons="因 SAP-1 失敗無法判定")
         return
-    rep.add("SAP-1", True)
+    parse_fails = [str(p.relative_to(repo)) for p in configs if parse_wrangler_file(p) is None]
+    if parse_fails:
+        rep.add("SAP-1", False, [f"{p} 解析失敗" for p in parse_fails])
+        rep.add("SAP-2", False, reasons="因 SAP-1 失敗無法判定")
+        return
+    rep.add("SAP-1", True, f"{len(configs)} 個 wrangler 設定：{', '.join(str(p.relative_to(repo)) for p in configs)}")
 
-    # 多 worker monorepo：所有 wrangler 設定檔（root＋子目錄）都受 SAP-2 判定
+    # 多 worker monorepo：所有 wrangler 設定檔都受 SAP-2 判定
     hits = []
-    for cfg_path in find_all_wrangler(repo):
+    for cfg_path in configs:
         cfg = parse_wrangler_file(cfg_path)
-        if cfg is None:
-            hits.append(f"{cfg_path.relative_to(repo)} 解析失敗")
-            continue
         hits.extend(resource_hits(cfg, allowlist, prefix=f"{cfg_path.relative_to(repo)}: "))
     rep.add("SAP-2", not hits, hits or None)
 

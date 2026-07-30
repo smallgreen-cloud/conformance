@@ -18,7 +18,7 @@ SKIP_DIRS = {"node_modules", ".git", ".wrangler", "dist", "build", ".conformance
              "tests", "test", "__tests__", "scripts"}
 SKIP_SUFFIXES = (".d.ts",)
 # 平台標準環境變數，非 secret 亦非 binding
-BUILTIN_VARS = {"NODE_ENV", "CI", "CF_PAGES", "GITHUB_ACTIONS", "DEV", "PROD"}
+BUILTIN_VARS = {"NODE_ENV", "CI", "CF_PAGES", "GITHUB_ACTIONS", "DEV", "PROD", "VITEST"}
 
 
 def declared_names(repo: Path) -> set:
