@@ -13,7 +13,7 @@ on:
       spec_ref:
         description: "smallgreen-cloud/spec 的 ref（tag/branch）"
         type: string
-        default: v0.1.0
+        default: v0.2.0
       conformance_ref:
         description: "conformance 腳本 ref"
         type: string

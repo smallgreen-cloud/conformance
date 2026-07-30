@@ -1,0 +1,9 @@
+{
+  // 合規 fixture：資源全在允許清單
+  "name": "fixture-pass",
+  "main": "src/index.js",
+  "compatibility_date": "2026-04-01",
+  "d1_databases": [
+    { "binding": "DB", "database_name": "fixture_db", "database_id": "00000000-0000-0000-0000-000000000000" },
+  ],
+}

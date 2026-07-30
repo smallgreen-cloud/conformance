@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: smallgreen-cloud/spec
-          ref: v0.1.0
+          ref: v0.2.0
           path: .spec
 
       - uses: actions/setup-python@v5
@@ -37,6 +37,11 @@ jobs:
           python scripts/check_profile.py --spec .spec --repo fixtures/pass
           python scripts/check_secrets_manifest.py --repo fixtures/pass
           python scripts/smoke_and_migrations.py --repo fixtures/pass --skip-smoke
+
+      - name: pass-altdeploy fixture 必須全綠（SAP-4 v0.2 已揭露分支）
+        run: |
+          python scripts/check_contract.py --spec .spec --repo fixtures/pass-altdeploy
+          python scripts/check_profile.py --spec .spec --repo fixtures/pass-altdeploy
 
       - name: fail fixture 必須被拒（每支腳本各自非零退出）
         run: |

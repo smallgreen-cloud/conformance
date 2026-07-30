@@ -95,9 +95,31 @@ def check_small_app(rep: Report, repo: Path, allowlist: dict):
     rep.add("SAP-2", not hits, hits or None)
 
 
+FILE_TO_ALT_LABEL = {
+    "Dockerfile": "docker",
+    "docker-compose.yml": "docker-compose",
+    "docker-compose.yaml": "docker-compose",
+    "Procfile": "procfile",
+}
+
+
 def check_no_daemon_files(rep: Report, repo: Path):
-    found = [f for f in FORBIDDEN_FILES if (repo / f).exists()]
-    rep.add("SAP-4", not found, [f"發現常駐程序基礎設施檔: {f}" for f in found] or None)
+    """SAP-4 v0.2：常駐基礎設施檔存在時必須在 profile.yaml alt_deployment 揭露（issue #4）。"""
+    declared = set()
+    prof = repo / ".smallgreen" / "profile.yaml"
+    if prof.exists():
+        try:
+            declared = set((load_yaml(prof) or {}).get("alt_deployment") or [])
+        except Exception:
+            pass
+    hits = []
+    for f in FORBIDDEN_FILES:
+        if not (repo / f).exists():
+            continue
+        label = FILE_TO_ALT_LABEL.get(f, "other")
+        if label not in declared:
+            hits.append(f"{f} 存在但未在 profile.yaml alt_deployment 揭露（已揭露＝pass＋服務卡標注）")
+    rep.add("SAP-4", not hits, hits or None)
 
 
 def check_pipeline(rep: Report, repo: Path):

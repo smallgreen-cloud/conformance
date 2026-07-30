@@ -1,0 +1,13 @@
+schema_version: "0.1.0"
+profile: small-app
+summary:
+  purpose: 合規測試 fixture
+  audience: conformance CI
+  users_estimate: "1"
+login_method: none
+data:
+  types: [test_items]
+  stored_in: [d1]
+secrets: []
+external_services: []
+alt_deployment: [docker]

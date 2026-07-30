@@ -1,0 +1,19 @@
+schema_version: "0.1.0"
+update:
+  strategy: template-sync
+  preview_before_promote: true
+backup:
+  targets: [d1]
+  method: wrangler d1 export fixture_db --output backup.sql
+restore:
+  method: wrangler d1 execute fixture_db --file backup.sql
+uninstall:
+  steps:
+    - wrangler delete
+    - wrangler d1 delete fixture_db
+  data_export_first: true
+quota_watchdog:
+  watch:
+    - resource: d1_rows_read
+      free_limit: 5M rows/day
+      check_method: Cloudflare dashboard → D1 → metrics
