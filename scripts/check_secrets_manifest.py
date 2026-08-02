@@ -42,8 +42,10 @@ def declared_names(repo: Path) -> set:
         for item in (wcfg.get("durable_objects") or {}).get("bindings") or []:
             if isinstance(item, dict) and item.get("name"):
                 names.add(item["name"])
-        for item in wcfg.get("queues_consumers") or []:
-            pass  # consumers 無 binding 名
+        for item in (wcfg.get("queues") or {}).get("producers") or []:
+            if isinstance(item, dict) and item.get("binding"):
+                names.add(item["binding"])
+        # queues.consumers 無 binding 名（consumer 以 handler 接收，不經 env）
     prof = repo / ".smallgreen" / "profile.yaml"
     if prof.exists():
         try:
