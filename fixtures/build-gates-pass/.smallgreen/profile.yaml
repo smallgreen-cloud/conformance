@@ -1,0 +1,13 @@
+schema_version: "0.3.0"
+profile: small-app
+summary:
+  purpose: CON-8/CON-9 fixture——宣告的閘門在乾淨環境下全數通過
+  audience: conformance 自測
+  users_estimate: "1"
+login_method: none
+data: { types: [none], stored_in: [none] }
+secrets: []
+external_services: []
+build_requirements:
+  runtime: "node>=20"
+  gates: ["true", "echo gate-ok"]

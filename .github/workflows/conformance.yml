@@ -80,3 +80,24 @@ jobs:
         run: |
           python .conformance/scripts/smoke_and_migrations.py --repo . \
             ${{ inputs.run_smoke == false && '--skip-smoke' || '' }}
+
+  build-gates:
+    # CON-8 乾淨環境建置閘＋CON-9 建置需求宣告完整性（spec v0.3.0，issues #11/#13）
+    # 獨立 job：fresh checkout、依 build_requirements.package_manager 安裝、逐條跑 gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: smallgreen-cloud/conformance
+          ref: ${{ inputs.conformance_ref }}
+          path: .conformance
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install --quiet pyyaml
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: 乾淨環境建置閘（CON-8/CON-9）
+        run: python .conformance/scripts/check_build_gates.py --repo .

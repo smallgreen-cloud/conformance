@@ -98,3 +98,6 @@ jobs:
           else
             echo "run_smoke=false：Path C smoke 由部署期裁判層執行"
           fi
+
+      - name: 乾淨環境建置閘（CON-8/CON-9；Path C 對組裝樹）
+        run: python .conformance/scripts/check_build_gates.py --repo assembled
