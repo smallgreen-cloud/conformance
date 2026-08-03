@@ -28,6 +28,33 @@ MISSING_PATTERNS = [
     (re.compile(r"Could not resolve \"([^\"]+)\"", re.I), "dependency"),
     (re.compile(r"error TS2307[^\n]*'([^']+)'", re.I), "dependency"),
 ]
+# 版本不符（非缺項）：宣告的 runtime 版本低於實際需求時，CON-9 一樣要判 fail——
+# 「宣告了但宣告錯」與「沒宣告」對部署者是同一種傷害（實證：second-brain adapter 宣告
+# node>=20，上游 wrangler 4.x 實需 node>=22，CI 才擋下）。
+RUNTIME_VERSION_PATTERNS = [
+    re.compile(r"requires at least (\S+?)\.?\s+v?(\d+)", re.I),
+    re.compile(r"(\S+)\s+version\s+[\"']?>=?\s*v?(\d+)[^\n]*required", re.I),
+]
+
+
+def required_runtime_version(output: str):
+    """從失敗訊息抽出「某 runtime 至少要 vN」；抽不到回 None。"""
+    for pat in RUNTIME_VERSION_PATTERNS:
+        m = pat.search(output)
+        if m:
+            return m.group(1).strip().rstrip(".").lower(), int(m.group(2))
+    return None
+
+
+def declared_major(runtime: str, name: str):
+    """從 build_requirements.runtime（如 node>=20）取宣告的主版號；名稱不符或無版號回 None。"""
+    m = re.match(r"\s*([A-Za-z.]+)\s*>?=?\s*v?(\d+)", runtime or "")
+    if not m:
+        return None
+    decl_name = m.group(1).lower()
+    if name not in decl_name and decl_name not in name:
+        return None
+    return int(m.group(2))
 INSTALL_CMD = {"npm": ["npm", "ci"], "pnpm": ["pnpm", "install", "--frozen-lockfile"],
                "yarn": ["yarn", "install", "--immutable"], "bun": ["bun", "install", "--frozen-lockfile"]}
 
@@ -102,7 +129,22 @@ def main() -> int:
     cmd, output = failed
     rep.add("CON-8", False, [f"閘門失敗：{cmd}", output[-800:]])
 
-    # CON-9：失敗項是否已宣告
+    # CON-9：失敗項是否已宣告——先看 runtime 版本不符，再看缺工具／依賴
+    need = required_runtime_version(output)
+    if need:
+        name, need_major = need
+        decl = declared_major(str(br.get("runtime") or ""), name)
+        if decl is None:
+            rep.add("CON-9", False, [f"建置需要 {name} v{need_major}+，但 build_requirements.runtime "
+                                     f"未宣告該 runtime（現值：{br.get('runtime') or '未填'}）"])
+        elif decl < need_major:
+            rep.add("CON-9", False, [f"build_requirements.runtime 宣告 {name}>={decl}，"
+                                     f"實際需要 v{need_major}+——宣告錯與未宣告對部署者同害"])
+        else:
+            rep.add("CON-9", True, f"宣告 {name}>={decl} 已涵蓋需求 v{need_major}（環境未達宣告，非宣告缺漏）")
+        rep.finish()
+        return 1
+
     missing = infer_missing(output)
     if not missing:
         rep.add("CON-9", True, "失敗原因無法自動歸因為「缺工具／依賴」——不判定（人工審閱）", skipped=True)

@@ -98,6 +98,6 @@ jobs:
       - run: pip install --quiet pyyaml
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
       - name: 乾淨環境建置閘（CON-8/CON-9）
         run: python .conformance/scripts/check_build_gates.py --repo .
