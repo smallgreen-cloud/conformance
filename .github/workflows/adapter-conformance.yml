@@ -99,5 +99,10 @@ jobs:
             echo "run_smoke=false：Path C smoke 由部署期裁判層執行"
           fi
 
+      # build_requirements.gates 多為 node 工具鏈；runner 預設 node 版本不保證，明示釘住
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
       - name: 乾淨環境建置閘（CON-8/CON-9；Path C 對組裝樹）
         run: python .conformance/scripts/check_build_gates.py --repo assembled
