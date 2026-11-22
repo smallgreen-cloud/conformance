@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""Secrets manifest 一致性（CON-3）：程式碼引用的 env 名 ⊆ manifest ∪ wrangler vars ∪ bindings。
+"""CON-3：runtime env 名 ⊆ secrets manifest ∪ 所選託管模式的已驗證 bindings。
 
-用法：check_secrets_manifest.py --repo <受檢 repo 路徑>
+用法：check_secrets_manifest.py --repo <repo> [--spec <Sites 相容 Spec>]
 """
 import argparse
+import hashlib
 import re
 import sys
 from pathlib import Path
 
 from sg_common import Report, find_all_wrangler, load_yaml, parse_wrangler_file
+from sg_sites import SitesError, has_sites_declaration, sites_binding_names
 
 ENV_RE = re.compile(r"\benv\.([A-Z][A-Z0-9_]*)\b")
 PROCESS_ENV_RE = re.compile(r"\bprocess\.env\.([A-Z][A-Z0-9_]*)\b")
@@ -19,11 +21,19 @@ SKIP_DIRS = {"node_modules", ".git", ".wrangler", "dist", "build", ".conformance
 SKIP_SUFFIXES = (".d.ts",)
 # 平台標準環境變數，非 secret 亦非 binding
 BUILTIN_VARS = {"NODE_ENV", "CI", "CF_PAGES", "GITHUB_ACTIONS", "DEV", "PROD", "VITEST"}
+# Build entrypoints only: an app/vite.config.ts remains runtime input to CON-3.
+BUILD_CONFIG_NAMES = {f"vite.config.{ext}" for ext in ("js", "mjs", "cjs", "ts", "mts", "cts")}
+# 2026-11-23 / PetMCP ed20ee8f: this exact Sites 1.1.7 starter bridge uses
+# ctx.props.CONNECTORS in production and env.CONNECTORS only behind DEV. Do not
+# globally whitelist CONNECTORS: a changed bridge must be reviewed and re-tested.
+# Fixture + source provenance: tests/connector-preview-worker.txt, README Sites.
+PREVIEW_BRIDGE_SHA256 = "a0a10229cdda6f5fdb32234e3539007412233bb4938a671866c9295a44a3bdb6"
 
 
-def declared_names(repo: Path) -> set:
-    names = set()
-    for cfg_path in find_all_wrangler(repo):
+def declared_names(repo: Path, spec: Path | None = None) -> set:
+    sites_names = sites_binding_names(repo, spec)
+    names = set(sites_names or ())
+    for cfg_path in ([] if sites_names is not None else find_all_wrangler(repo)):
         wcfg = parse_wrangler_file(cfg_path)
         if not wcfg:
             continue
@@ -57,11 +67,14 @@ def declared_names(repo: Path) -> set:
     return names
 
 
-def referenced_names(repo: Path) -> dict:
+def referenced_names(repo: Path, *, sites=False) -> dict:
     refs = {}
     for glob in CODE_GLOBS:
         for f in repo.rglob(glob):
-            if any(part in SKIP_DIRS for part in f.parts) or f.name.endswith(SKIP_SUFFIXES):
+            rel = f.relative_to(repo)
+            if any(part in SKIP_DIRS for part in rel.parts) or f.name.endswith(SKIP_SUFFIXES):
+                continue
+            if len(rel.parts) == 1 and f.name in BUILD_CONFIG_NAMES:
                 continue
             try:
                 text = f.read_text(encoding="utf-8", errors="ignore")
@@ -69,6 +82,9 @@ def referenced_names(repo: Path) -> dict:
                 continue
             for regex in (ENV_RE, PROCESS_ENV_RE):
                 for m in regex.finditer(text):
+                    if (sites and m.group(1) == "CONNECTORS" and rel.as_posix() == "worker/index.ts"
+                            and hashlib.sha256(f.read_bytes()).hexdigest() == PREVIEW_BRIDGE_SHA256):
+                        continue
                     refs.setdefault(m.group(1), set()).add(str(f.relative_to(repo)))
     return refs
 
@@ -76,11 +92,16 @@ def referenced_names(repo: Path) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo", required=True, type=Path)
+    ap.add_argument("--spec", type=Path, help="Sites-only 必填：含 install 與 sites-hosting schema 的 Spec checkout")
     args = ap.parse_args()
 
     rep = Report("secrets manifest 一致性 (CON-3)")
-    declared = declared_names(args.repo)
-    refs = referenced_names(args.repo)
+    try:
+        declared = declared_names(args.repo, args.spec)
+    except SitesError as exc:
+        rep.add("CON-3", False, str(exc))
+        return rep.finish()
+    refs = referenced_names(args.repo, sites=has_sites_declaration(args.repo))
     undeclared = {name: files for name, files in sorted(refs.items())
                   if name not in declared and name not in BUILTIN_VARS}
     if undeclared:
