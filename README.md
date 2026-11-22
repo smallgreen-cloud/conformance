@@ -56,7 +56,7 @@ python scripts/check_profile.py --spec <鎖定Spec路徑> --repo <Sites原始碼
 python scripts/check_secrets_manifest.py --spec <鎖定Spec路徑> --repo <Sites原始碼>
 ```
 
-`install.yaml` 或 `.openai/hosting.json` 任一出現即選 Sites 分支；缺另一份、舊 Spec、錯 target、未知 manifest 欄位、資源不符、外部基礎設施、任何深度的來源 Wrangler 或 alt_deployment 都 fail，不能回退成自架。公開模板可省略 project_id。原生編譯器的 dist/server/wrangler.json 不作為來源宣告。既有沒有 Sites 宣告的 Wrangler 路徑維持原規則。
+`install.yaml` 或 `.openai/hosting.json` 任一出現即選 Sites 分支；缺另一份、舊 Spec、錯 target、未知 manifest 欄位、資源不符、外部基礎設施、任何深度的來源 Wrangler 或 alt_deployment 都 fail，不能回退成自架。公開模板可省略 project_id。原生編譯器的 dist/server/wrangler.json 不作為來源宣告；CI 根目錄的 .conformance／.spec 輔助 checkout 也不屬應用來源，但 app/.conformance 等巢狀應用路徑仍檢查。既有沒有 Sites 宣告的 Wrangler 路徑維持原規則。
 
 CON-3 只加入已驗證的 d1/r2 名稱。根目錄 Vite config 是 build entrypoint；應用程式內同名檔仍掃描。CONNECTORS 不是全域白名單：只有 `worker/index.ts` 與已核對 Sites 1.1.7 starter 的完整 SHA-256 相符才排除該名稱。`tests/connector-preview-worker.txt` 來自 MIT PetMCP runtime `ed20ee8fbda440a7f1b44007528394b726ae4f62` 的原生 starter bridge，保留其 DEV guard 與 request-scoped ctx.props 語意；變更後必須重新審查，不能只更新指紋躲過失敗。仍沿用 literal env.NAME／process.env.NAME 靜態掃描範圍，動態名稱／別名需人工審查。
 

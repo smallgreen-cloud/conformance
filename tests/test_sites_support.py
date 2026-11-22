@@ -141,6 +141,14 @@ class SitesSupportTest(unittest.TestCase):
         self.assert_profile(True)
         self.assert_secrets(True)
 
+    def test_ci_checker_checkouts_are_not_application_source(self):
+        self.write(".conformance/fixtures/pass/wrangler.json", "{}")
+        self.write(".spec/examples/wrangler.json", "{}")
+        self.assert_profile(True)
+        self.assert_secrets(True)
+        self.write("app/.conformance/wrangler.json", "{}")
+        self.assert_profile(False)
+
     def test_alternative_hosting_is_not_sites_only(self):
         self.profile["alt_deployment"] = ["docker"]
         self.save()

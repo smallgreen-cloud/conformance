@@ -68,7 +68,10 @@ def sites_boundary_errors(repo: Path, install: dict, manifest: dict) -> list[str
         errors.append("Sites d1/r2 binding 名稱不可重複")
     # Unlike the legacy monorepo search, Sites-only rejects source configs at ANY
     # depth. Generated dist/build and dependency metadata are not source configs.
-    configs = find_all_wrangler(repo, max_depth=10000)
+    # The documented CI checks out its validators at these two ROOT paths.
+    # Nested application paths with the same name are still application source.
+    configs = [p for p in find_all_wrangler(repo, max_depth=10000)
+               if p.relative_to(repo).parts[0] not in {".conformance", ".spec"}]
     if configs:
         errors.append("Sites-only 不得混入獨立 Wrangler 設定：" + ", ".join(str(p.relative_to(repo)) for p in configs))
     profile_path = repo / ".smallgreen/profile.yaml"
