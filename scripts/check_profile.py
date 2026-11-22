@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Profile 靜態判定（SAP-1/2/4 與 PIP-1/3 靜態子集）：wrangler 存在與解析、資源允許清單、常駐程序檔、pipeline 觸發器。
+"""Profile 靜態判定：依明確宣告選 Sites-only 或既有 Wrangler 路徑。
 
 用法：check_profile.py --spec <spec repo 路徑> --repo <受檢 repo 路徑>
 SAP-5/7（行為分析、agent 矩陣）與 SAP-6/PIP-2/8（GitHub API）不在本腳本：前者屬部署期，後者由 CI 端以 GITHUB_TOKEN 檢查（缺 token 時標 skipped）。
@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 from sg_common import Report, die, find_all_wrangler, load_wrangler, load_yaml, parse_wrangler_file
+from sg_sites import SitesError, has_sites_declaration, load_sites, sites_boundary_errors
 
 FORBIDDEN_FILES = ["Dockerfile", "docker-compose.yml", "docker-compose.yaml", "Procfile"]
 # wrangler 的「資源型」top-level key 全集（白名單語意：出現在此集合但不在 spec 允許清單 → fail）。
@@ -73,7 +74,21 @@ def resource_hits(wcfg: dict, allowlist: dict, prefix: str = "") -> list:
     return hits
 
 
-def check_small_app(rep: Report, repo: Path, allowlist: dict):
+def check_small_app(rep: Report, repo: Path, allowlist: dict, spec: Path | None = None):
+    if has_sites_declaration(repo):
+        try:
+            install, manifest = load_sites(repo, spec)
+        except SitesError as exc:
+            rep.add("SAP-1", False, str(exc))
+            rep.add("SAP-2", False, str(exc))
+            return
+        rep.add("SAP-1", True, "Sites 安裝契約與 .openai/hosting.json schema 通過；僅靜態來源驗證")
+        try:
+            errors = sites_boundary_errors(repo, install, manifest)
+        except SitesError as exc:
+            errors = [str(exc)]
+        rep.add("SAP-2", not errors, errors or "僅 Sites 受管資源；非 Cloudflare 免費額度保證")
+        return
     # SAP-1（v0.1.3）：根目錄或子目錄（深度 ≤3）存在至少一個可解析的 wrangler 設定
     configs = find_all_wrangler(repo)
     if not configs:
@@ -195,16 +210,18 @@ def main() -> int:
     ap.add_argument("--spec", required=True, type=Path)
     ap.add_argument("--repo", required=True, type=Path)
     args = ap.parse_args()
-    allowlist_path = args.spec / "profiles" / "free-tier-allowlist.yaml"
-    if not allowlist_path.exists():
-        die(f"允許清單不存在: {allowlist_path}")
-    allowlist = load_yaml(allowlist_path)
+    allowlist = {}
+    if not has_sites_declaration(args.repo):
+        allowlist_path = args.spec / "profiles" / "free-tier-allowlist.yaml"
+        if not allowlist_path.exists():
+            die(f"允許清單不存在: {allowlist_path}")
+        allowlist = load_yaml(allowlist_path)
 
     profile = declared_profile(args.repo)
     rep = Report(f"profile 靜態判定（{profile}）")
 
-    if "small-app" in profile:
-        check_small_app(rep, args.repo, allowlist)
+    if "small-app" in profile or has_sites_declaration(args.repo):
+        check_small_app(rep, args.repo, allowlist, args.spec)
         check_license_via_api(rep, "SAP-6")
     if "pipeline" in profile:
         check_pipeline(rep, args.repo)

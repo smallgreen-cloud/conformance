@@ -29,7 +29,22 @@ jobs:
         with:
           node-version: "22"
 
-      - run: pip install --quiet jsonschema pyyaml
+      - run: pip install --quiet jsonschema pyyaml coverage==7.17.4
+
+      - name: Checkout Sites-compatible Spec
+        uses: actions/checkout@v4
+        with:
+          repository: smallgreen-cloud/spec
+          ref: 05b98c23f307ed90814a2927e38fb3868bc887b5
+          path: .sites-spec
+
+      - name: Sites-only and legacy regression tests
+        env:
+          SMALLGREEN_TEST_SPEC: .sites-spec
+          COVERAGE_FILE: ${{ runner.temp }}/sites-conformance.coverage
+        run: |
+          python -m coverage run --branch --source=scripts -m unittest discover -s tests -p 'test_*.py'
+          python -m coverage report --include='*/sg_sites.py,*/check_profile.py,*/check_secrets_manifest.py' --fail-under=80
 
       - name: pass fixture 必須全綠
         run: |
